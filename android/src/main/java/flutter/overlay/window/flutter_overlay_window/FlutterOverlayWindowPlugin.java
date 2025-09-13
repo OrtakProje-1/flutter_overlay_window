@@ -187,7 +187,7 @@ public class FlutterOverlayWindowPlugin implements
 
     @Override
     public boolean onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode == REQUEST_CODE_FOR_OVERLAY_PERMISSION) {
+        if (requestCode == REQUEST_CODE_FOR_OVERLAY_PERMISSION && pendingResult != null) {
             pendingResult.success(checkOverlayPermission());
             return true;
         }
