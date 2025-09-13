@@ -107,7 +107,11 @@ public class FlutterOverlayWindowPlugin implements
             intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
             intent.putExtra("startX", startX);
             intent.putExtra("startY", startY);
-            context.startService(intent);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) { // Android 12 ve üzeri
+                context.startForegroundService(intent);
+            } else {
+                context.startService(intent);
+            }
             result.success(null);
         } else if (call.method.equals("isOverlayActive")) {
             result.success(OverlayService.isRunning);
