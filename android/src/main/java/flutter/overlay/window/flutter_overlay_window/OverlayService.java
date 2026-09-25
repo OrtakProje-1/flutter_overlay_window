@@ -101,7 +101,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
         if (intent == null) {
             Log.w("OverlayService", "Received null intent in onStartCommand");
-            return START_STICKY;
+            stopSelf();
+            return START_NOT_STICKY;
         }
 
         int startX = intent.getIntExtra("startX", OverlayConstants.DEFAULT_XY);
@@ -115,7 +116,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 stopSelf();
             }
             isRunning = false;
-            return START_STICKY;
+            return START_NOT_STICKY;
         }
         if (windowManager != null) {
             windowManager.removeView(flutterView);
@@ -183,7 +184,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         flutterView.setOnTouchListener(this);
         windowManager.addView(flutterView, params);
         moveOverlay(dx, dy, null);
-        return START_STICKY;
+        return START_NOT_STICKY;
     }
 
 
@@ -346,7 +347,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 .setContentIntent(pendingIntent)
                 .setVisibility(WindowSetup.notificationVisibility)
                 .build();
-        startForeground(OverlayConstants.NOTIFICATION_ID, notification);
+        try {
+            startForeground(OverlayConstants.NOTIFICATION_ID, notification);
+        } catch (Exception e) {
+            Log.e("OverlayService", "Error starting foreground service", e);
+            stopSelf();
+            return;
+        }
         instance = this;
     }
 
