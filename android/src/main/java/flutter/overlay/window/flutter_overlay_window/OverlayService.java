@@ -5,6 +5,10 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
+import android.app.KeyguardManager;
+import android.os.PowerManager;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.content.res.Resources;
@@ -58,6 +62,29 @@ public class OverlayService extends Service implements View.OnTouchListener {
     public static boolean isRunning = false;
     private WindowManager windowManager = null;
     private FlutterView flutterView;
+    private FlutterEngine overlayEngine;
+    private boolean screenReceiverRegistered = false;
+    private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction()) && overlayEngine != null) {
+                overlayEngine.getLifecycleChannel().appIsPaused();
+            } else {
+                updateAnimationLifecycle();
+            }
+        }
+    };
+
+    private void updateAnimationLifecycle() {
+        if (overlayEngine == null) return;
+        PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
+        KeyguardManager keyguard = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
+        if (isRunning && power.isInteractive() && !keyguard.isKeyguardLocked()) {
+            overlayEngine.getLifecycleChannel().appIsResumed();
+        } else {
+            overlayEngine.getLifecycleChannel().appIsPaused();
+        }
+    }
+
     private MethodChannel flutterChannel;
     private BasicMessageChannel<Object> overlayMessageChannel;
     private int clickableFlag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
@@ -82,6 +109,16 @@ public class OverlayService extends Service implements View.OnTouchListener {
     @Override
     public void onDestroy() {
         Log.d("OverLay", "Destroying the overlay window service");
+        isRunning = false;
+        updateAnimationLifecycle();
+        if (screenReceiverRegistered) {
+            try {
+                unregisterReceiver(screenReceiver);
+            } catch (Exception e) {
+                Log.e("OverLay", "Failed to unregister screenReceiver", e);
+            }
+            screenReceiverRegistered = false;
+        }
         if (windowManager != null) {
             windowManager.removeView(flutterView);
             windowManager = null;
@@ -92,6 +129,12 @@ public class OverlayService extends Service implements View.OnTouchListener {
         NotificationManager notificationManager = (NotificationManager) getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
         notificationManager.cancel(OverlayConstants.NOTIFICATION_ID);
         instance = null;
+        mAnimationHandler.removeCallbacksAndMessages(null);
+        if (mTrayAnimationTimer != null) {
+            mTrayAnimationTimer.cancel();
+            mTrayAnimationTimer = null;
+        }
+        super.onDestroy();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
@@ -127,7 +170,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
         isRunning = true;
         Log.d("onStartCommand", "Service started");
         FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-        engine.getLifecycleChannel().appIsResumed();
+        overlayEngine = engine;
+        updateAnimationLifecycle();
         flutterView = new FlutterView(getApplicationContext(), new FlutterTextureView(getApplicationContext()));
         flutterView.attachToFlutterEngine(FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG));
         flutterView.setFitsSystemWindows(true);
@@ -329,6 +373,21 @@ public class OverlayService extends Service implements View.OnTouchListener {
             overlayMessageChannel = new BasicMessageChannel(flutterEngine.getDartExecutor(), OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
         }
 
+        overlayEngine = flutterEngine;
+        try {
+            IntentFilter screenFilter = new IntentFilter();
+            screenFilter.addAction(Intent.ACTION_SCREEN_OFF);
+            screenFilter.addAction(Intent.ACTION_SCREEN_ON);
+            screenFilter.addAction(Intent.ACTION_USER_PRESENT);
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(screenReceiver, screenFilter, Context.RECEIVER_EXPORTED);
+            } else {
+                registerReceiver(screenReceiver, screenFilter);
+            }
+            screenReceiverRegistered = true;
+        } catch (Exception e) {
+            Log.e("OverLay", "Failed to register screenReceiver", e);
+        }
         createNotificationChannel();
         Intent notificationIntent = new Intent(this, FlutterOverlayWindowPlugin.class);
         int pendingFlags;
