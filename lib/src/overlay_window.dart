@@ -68,6 +68,8 @@ class FlutterOverlayWindow {
     );
   }
 
+  static Completer<bool?>? _permissionCompleter;
+
   /// Check if overlay permission is granted
   static Future<bool> isPermissionGranted() async {
     try {
@@ -81,11 +83,29 @@ class FlutterOverlayWindow {
   /// Request overlay permission
   /// it will open the overlay settings page and return `true` once the permission granted.
   static Future<bool?> requestPermission() async {
+    if (_permissionCompleter != null) {
+      return _permissionCompleter!.future;
+    }
+    final completer = Completer<bool?>();
+    _permissionCompleter = completer;
     try {
-      return await _channel.invokeMethod<bool?>('requestPermission');
+      final res = await _channel.invokeMethod<bool?>('requestPermission');
+      completer.complete(res);
+      return res;
     } on PlatformException catch (error) {
-      log("Error requestPermession: $error");
+      if (error.code == 'PERMISSION_IN_PROGRESS') {
+        return _permissionCompleter?.future ?? Future.value(false);
+      }
+      log("Error requestPermission: $error");
+      completer.completeError(error);
       rethrow;
+    } catch (e) {
+      completer.completeError(e);
+      rethrow;
+    } finally {
+      if (_permissionCompleter == completer) {
+        _permissionCompleter = null;
+      }
     }
   }
 
