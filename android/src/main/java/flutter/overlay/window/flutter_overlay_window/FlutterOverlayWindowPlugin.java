@@ -186,7 +186,11 @@ public class FlutterOverlayWindowPlugin implements
         if (pendingResult != null) {
             Result resultToReply = pendingResult;
             pendingResult = null;
-            resultToReply.error("ENGINE_DETACHED", "Engine detached before permission result", null);
+            try {
+                resultToReply.error("ENGINE_DETACHED", "Engine detached before permission result", null);
+            } catch (IllegalStateException e) {
+                Log.w("FlutterOverlayWindow", "Reply already submitted on onDetachedFromEngine", e);
+            }
         }
         context = null;
     }
@@ -230,7 +234,11 @@ public class FlutterOverlayWindowPlugin implements
         if (pendingResult != null) {
             Result resultToReply = pendingResult;
             pendingResult = null;
-            resultToReply.error("ACTIVITY_DESTROYED", "Activity was detached before permission result", null);
+            try {
+                resultToReply.error("ACTIVITY_DESTROYED", "Activity was detached before permission result", null);
+            } catch (IllegalStateException e) {
+                Log.w("FlutterOverlayWindow", "Reply already submitted on onDetachedFromActivity", e);
+            }
         }
     }
 
@@ -261,7 +269,11 @@ public class FlutterOverlayWindowPlugin implements
             Result resultToReply = pendingResult;
             pendingResult = null;
             if (resultToReply != null) {
-                resultToReply.success(checkOverlayPermission());
+                try {
+                    resultToReply.success(checkOverlayPermission());
+                } catch (IllegalStateException e) {
+                    Log.w("FlutterOverlayWindow", "Reply already submitted on onActivityResult", e);
+                }
             }
             return true;
         }
