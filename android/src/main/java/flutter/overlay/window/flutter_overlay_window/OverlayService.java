@@ -427,12 +427,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
             String title = null;
             String content = null;
-            String unpinLabel = null;
 
             if (intent != null) {
                 title = intent.getStringExtra("overlayTitle");
                 content = intent.getStringExtra("overlayContent");
-                unpinLabel = intent.getStringExtra("overlayUnpin");
             }
 
             if (title == null || title.trim().isEmpty()) {
@@ -457,9 +455,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 if (content == null || content.trim().isEmpty()) {
                     content = prefs.getString("flutter.starting_notif_content", null);
                 }
-                if (unpinLabel == null || unpinLabel.trim().isEmpty()) {
-                    unpinLabel = prefs.getString("flutter.active_notif_unpin", null);
-                }
             }
 
             if (title == null || title.trim().isEmpty()) {
@@ -467,9 +462,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
             if (content == null) {
                 content = "";
-            }
-            if (unpinLabel == null || unpinLabel.trim().isEmpty()) {
-                unpinLabel = "Remove fixing";
             }
 
             int notifyIcon = getApplicationContext().getResources().getIdentifier("app_icon", "drawable", getPackageName());
