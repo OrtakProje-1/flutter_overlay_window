@@ -97,6 +97,8 @@ public class FlutterOverlayWindowPlugin implements
             intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
             intent.putExtra("startX", startX);
             intent.putExtra("startY", startY);
+            intent.putExtra("overlayTitle", overlayTitle);
+            intent.putExtra("overlayContent", overlayContent == null ? "" : overlayContent);
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     context.startForegroundService(intent);

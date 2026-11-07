@@ -5,6 +5,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.BroadcastReceiver;
 import android.content.IntentFilter;
 import android.app.KeyguardManager;
@@ -148,6 +149,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
         if (intent == null) {
             Log.w("OverlayService", "Received null intent in onStartCommand");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE);
+            } else {
+                stopForeground(true);
+            }
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -166,10 +172,16 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 windowManager = null;
                 flutterView = null;
             }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE);
+            } else {
+                stopForeground(true);
+            }
             stopSelf();
             isRunning = false;
             return START_NOT_STICKY;
         }
+        startForegroundNotification(intent);
         if (windowManager != null && flutterView != null) {
             try {
                 windowManager.removeView(flutterView);
@@ -365,34 +377,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
     @Override
     public void onCreate() {
         super.onCreate();
-        createNotificationChannel();
-        Intent notificationIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
-        if (notificationIntent == null) {
-            notificationIntent = new Intent(this, FlutterOverlayWindowPlugin.class);
-        }
-        int pendingFlags;
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            pendingFlags = PendingIntent.FLAG_IMMUTABLE;
-        } else {
-            pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT;
-        }
-        PendingIntent pendingIntent = PendingIntent.getActivity(this,
-                0, notificationIntent, pendingFlags);
-        final int notifyIcon = getDrawableResourceId("mipmap", "launcher");
-        Notification notification = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
-                .setContentTitle(WindowSetup.overlayTitle)
-                .setContentText(WindowSetup.overlayContent)
-                .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
-                .setContentIntent(pendingIntent)
-                .setVisibility(WindowSetup.notificationVisibility)
-                .build();
-        try {
-            startForeground(OverlayConstants.NOTIFICATION_ID, notification);
-        } catch (Exception e) {
-            Log.e("OverlayService", "Error starting foreground service", e);
-            stopSelf();
-            return;
-        }
+        startForegroundNotification(null);
 
         // Get the cached FlutterEngine
         FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
@@ -434,6 +419,92 @@ public class OverlayService extends Service implements View.OnTouchListener {
             Log.e("OverLay", "Failed to register screenReceiver", e);
         }
         instance = this;
+    }
+
+    private void startForegroundNotification(@Nullable Intent intent) {
+        try {
+            createNotificationChannel();
+
+            String title = null;
+            String content = null;
+            String unpinLabel = null;
+
+            if (intent != null) {
+                title = intent.getStringExtra("overlayTitle");
+                content = intent.getStringExtra("overlayContent");
+                unpinLabel = intent.getStringExtra("overlayUnpin");
+            }
+
+            if (title == null || title.trim().isEmpty()) {
+                title = WindowSetup.overlayTitle;
+            }
+            if (content == null) {
+                content = WindowSetup.overlayContent;
+            }
+
+            SharedPreferences prefs = null;
+            try {
+                prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE);
+            } catch (Exception ignored) {}
+
+            if (prefs != null) {
+                if (title == null || title.trim().isEmpty()) {
+                    title = prefs.getString("flutter.starting_notif_title", null);
+                }
+                if (title == null || title.trim().isEmpty()) {
+                    title = prefs.getString("flutter.active_notif_title", null);
+                }
+                if (content == null || content.trim().isEmpty()) {
+                    content = prefs.getString("flutter.starting_notif_content", null);
+                }
+                if (unpinLabel == null || unpinLabel.trim().isEmpty()) {
+                    unpinLabel = prefs.getString("flutter.active_notif_unpin", null);
+                }
+            }
+
+            if (title == null || title.trim().isEmpty()) {
+                title = "Crossio";
+            }
+            if (content == null) {
+                content = "";
+            }
+            if (unpinLabel == null || unpinLabel.trim().isEmpty()) {
+                unpinLabel = "Remove fixing";
+            }
+
+            int notifyIcon = getApplicationContext().getResources().getIdentifier("app_icon", "drawable", getPackageName());
+            if (notifyIcon == 0) {
+                notifyIcon = getDrawableResourceId("mipmap", "launcher");
+            }
+            if (notifyIcon == 0) {
+                notifyIcon = R.drawable.notification_icon;
+            }
+
+            Intent notificationIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+            if (notificationIntent == null) {
+                notificationIntent = new Intent(this, FlutterOverlayWindowPlugin.class);
+            }
+            int pendingFlags = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                    ? (PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)
+                    : PendingIntent.FLAG_UPDATE_CURRENT;
+            PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingFlags);
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
+                    .setContentTitle(title)
+                    .setContentText(content)
+                    .setSmallIcon(notifyIcon)
+                    .setContentIntent(pendingIntent)
+                    .setPriority(NotificationCompat.PRIORITY_LOW)
+                    .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                    .setOngoing(true)
+                    .setOnlyAlertOnce(true)
+                    .setVisibility(WindowSetup.notificationVisibility);
+
+            startForeground(OverlayConstants.NOTIFICATION_ID, builder.build());
+            Log.d("OverlayService", "startForegroundNotification posted: title='" + title + "', content='" + content + "'");
+        } catch (Exception e) {
+            Log.e("OverlayService", "Error in startForegroundNotification", e);
+        }
     }
 
     private void createNotificationChannel() {
