@@ -472,9 +472,32 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 notifyIcon = R.drawable.notification_icon;
             }
 
-            Intent notificationIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+            Intent notificationIntent = null;
+            try {
+                notificationIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+            } catch (Throwable t) {
+                Log.w("OverlayService", "getLaunchIntentForPackage failed, falling back to safe intent", t);
+            }
             if (notificationIntent == null) {
-                notificationIntent = new Intent(this, FlutterOverlayWindowPlugin.class);
+                try {
+                    android.content.pm.PackageInfo packageInfo = getPackageManager().getPackageInfo(getPackageName(), android.content.pm.PackageManager.GET_ACTIVITIES);
+                    if (packageInfo != null && packageInfo.activities != null) {
+                        for (android.content.pm.ActivityInfo activityInfo : packageInfo.activities) {
+                            if (activityInfo != null && activityInfo.name != null && activityInfo.exported) {
+                                notificationIntent = new Intent();
+                                notificationIntent.setComponent(new android.content.ComponentName(getPackageName(), activityInfo.name));
+                                notificationIntent.setAction(Intent.ACTION_MAIN);
+                                notificationIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+                                break;
+                            }
+                        }
+                    }
+                } catch (Throwable ignored) {}
+            }
+            if (notificationIntent == null) {
+                notificationIntent = new Intent(Intent.ACTION_MAIN)
+                        .addCategory(Intent.CATEGORY_LAUNCHER)
+                        .setPackage(getPackageName());
             }
             int pendingFlags = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
                     ? (PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)
