@@ -253,7 +253,33 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
         params.gravity = WindowSetup.gravity;
         flutterView.setOnTouchListener(this);
-        windowManager.addView(flutterView, params);
+        try {
+            windowManager.addView(flutterView, params);
+        } catch (WindowManager.BadTokenException e) {
+            Log.e("OverlayService", "Overlay window permission denied (BadTokenException): " + e.getMessage());
+            try {
+                android.content.SharedPreferences prefs = getApplicationContext().getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE);
+                prefs.edit().putString("flutter.last_overlay_error", "permission_denied_bad_token").apply();
+            } catch (Exception ignored) {}
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE);
+            } else {
+                stopForeground(true);
+            }
+            stopSelf();
+            isRunning = false;
+            return START_NOT_STICKY;
+        } catch (Exception e) {
+            Log.e("OverlayService", "Unexpected exception while adding overlay view: " + e.getMessage());
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE);
+            } else {
+                stopForeground(true);
+            }
+            stopSelf();
+            isRunning = false;
+            return START_NOT_STICKY;
+        }
         moveOverlay(dx, dy, null);
         return START_NOT_STICKY;
     }
